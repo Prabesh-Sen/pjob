@@ -1,5 +1,5 @@
 <?php
-session_start();
+session_start(); // Start the session
 
 // Database credentials
 $servername = "localhost";
@@ -27,7 +27,30 @@ if (empty($keyword)) {
     exit;
 }
 
-// SQL Query - Use Prepared Statements for Security
+// Check if the user is logged in
+if (isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true) {
+    $user_id = $_SESSION['u_id']; // Get user ID from session
+} else {
+    // If user is not logged in, redirect to login page
+    header("Location: signinusr.php");
+    exit();
+}
+
+// Insert search history into the database
+$searched_time = date("Y-m-d H:i:s"); // Get current timestamp
+$searchQuery = "INSERT INTO user_search_history (u_id, searched_time, searched_keyword) VALUES (?, ?, ?)";
+$stmt = $db->prepare($searchQuery);
+
+// Check if the statement was prepared successfully
+if ($stmt === false) {
+    die('Error preparing the query: ' . $db->error);
+}
+
+$stmt->bind_param("iss", $user_id, $searched_time, $keyword);
+$stmt->execute();
+$stmt->close();
+
+// SQL Query to search for jobs based on the keyword
 $sql = "SELECT * FROM jobs WHERE 
         LOWER(j_title) LIKE ? OR 
         LOWER(j_category) LIKE ? OR 
@@ -53,13 +76,18 @@ $jobs = [];
 while ($row = $result->fetch_assoc()) {
     // Fetch the company logo
     $companyId = $row['c_id'];
-    $logoQuery = "SELECT c_logo FROM company WHERE c_id = $companyId";
-    $logoResult = $db->query($logoQuery);
+    $logoQuery = "SELECT c_logo FROM company WHERE c_id = ?";
+    $logoStmt = $db->prepare($logoQuery);
+    $logoStmt->bind_param("i", $companyId);
+    $logoStmt->execute();
+    $logoResult = $logoStmt->get_result();
     $row['companyLogo'] = 'default_logo.png'; // Default logo if none is found
+
     if ($logoResult && $logoResult->num_rows > 0) {
         $logoRow = $logoResult->fetch_assoc();
         $row['companyLogo'] = $logoRow['c_logo'];
     }
+
     $jobs[] = $row; // Add the job entry to the array
 }
 
@@ -72,6 +100,7 @@ $db->close();
 
 <body>
 <?php include('common/nav.php'); ?>
+<?php include('../common/search.php'); ?>
 
 <!-- Main Content -->
 <div class="container-xxl py-5">
